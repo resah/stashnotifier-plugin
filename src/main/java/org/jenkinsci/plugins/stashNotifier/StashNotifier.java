@@ -16,20 +16,43 @@
  package org.jenkinsci.plugins.stashNotifier;
  
 import hudson.EnvVars;
-import hudson.Launcher;
 import hudson.Extension;
-import hudson.util.FormValidation;
+import hudson.Launcher;
 import hudson.ProxyConfiguration;
-import hudson.model.AbstractBuild;
 import hudson.model.BuildListener;
-import hudson.model.AbstractProject;
 import hudson.model.Result;
+import hudson.model.AbstractBuild;
+import hudson.model.AbstractProject;
 import hudson.plugins.git.util.BuildData;
-import hudson.tasks.Publisher;
-import hudson.tasks.Notifier;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
+import hudson.tasks.Notifier;
+import hudson.tasks.Publisher;
+import hudson.util.FormValidation;
 import hudson.util.Secret;
+
+import java.io.IOException;
+import java.io.PrintStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URL;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.regex.Pattern;
+
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
+import javax.servlet.ServletException;
+
+import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 
 import org.apache.commons.lang.StringEscapeUtils;
@@ -46,37 +69,15 @@ import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.conn.ssl.TrustStrategy;
+import org.apache.http.conn.ssl.X509HostnameVerifier;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.impl.conn.SingleClientConnManager;
 import org.apache.http.util.EntityUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.QueryParameter;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLPeerUnverifiedException;
-import javax.net.ssl.TrustManager;
-import javax.servlet.ServletException;
-
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
-import java.net.URL;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
-import java.security.KeyStoreException;
-import java.security.UnrecoverableKeyException;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.regex.Pattern;
-
-import jenkins.model.Jenkins;
+import org.kohsuke.stapler.StaplerRequest;
 
 /**
  * Notifies a configured Atlassian Stash server instance of build results
@@ -298,12 +299,26 @@ public class StashNotifier extends Notifier {
 				        return true;
 				    }
 				};
+                X509HostnameVerifier verifier = new X509HostnameVerifier() {
+                    public void verify(final String arg0, final SSLSocket arg1) throws IOException {
+                    }
+                    public void verify(final String arg0, final X509Certificate arg1) throws SSLException {
+                    }
+                    public void verify(final String arg0, final String[] arg1, final String[] arg2)
+                            throws SSLException {
+                    }
+                    public boolean verify(final String hostname, final SSLSession session) {
+                        return true;
+                    }
+                };
 
 				SSLSocketFactory sslSocketFactory 
-					= new SSLSocketFactory(easyStrategy);
+					= new SSLSocketFactory(easyStrategy, verifier);
 				SchemeRegistry schemeRegistry = new SchemeRegistry();
-				schemeRegistry.register(
-						new Scheme("https", 443, sslSocketFactory));
+                schemeRegistry.register(
+                        new Scheme("https", 443, sslSocketFactory));
+                schemeRegistry.register(
+                        new Scheme("https", 8443, sslSocketFactory));
 				ClientConnectionManager connectionManager 
 					= new SingleClientConnManager(schemeRegistry);
 				client = new DefaultHttpClient(connectionManager);
